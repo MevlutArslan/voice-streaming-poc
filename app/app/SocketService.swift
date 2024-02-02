@@ -15,7 +15,7 @@ import Foundation
     * Disconnect from the socket
 */
 class SocketService: NSObject, URLSessionWebSocketDelegate, ObservableObject {
-    private let url = URL(string: "ws://10.0.0.169:8000/communicate")!
+    private let url = URL(string: "ws://10.0.0.169:8999/communicate")!
 
     private var socket: URLSessionWebSocketTask?
     private var session: URLSession?
@@ -45,6 +45,15 @@ class SocketService: NSObject, URLSessionWebSocketDelegate, ObservableObject {
         socket?.send(.string(message), completionHandler: { error in
             if let error = error {
                 print("❌ Error encountered while sending message: \(String(describing: error))")
+            }
+        })
+    }
+    
+    /// Caller of this function should make sure the client is connected to the server.
+    func send(data: Data) {
+        socket?.send(.data(data), completionHandler: { error in
+            if let error = error {
+                print("❌ Error encountered while sending data: \(String(describing: error))")
             }
         })
     }

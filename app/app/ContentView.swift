@@ -9,9 +9,16 @@ import SwiftUI
 
 struct ContentView: View {
     @ObservedObject var socketService = SocketService()
-    
+    private var audioRecorder: AudioRecorder!
     @State var message: String = ""
     
+    @State var isRecording = false
+    @State var isPlaying = false
+    
+    init() {
+        self.audioRecorder = AudioRecorder(socketService: socketService)
+    }
+
     var body: some View {
         VStack {
             Image(systemName: socketService.isConnected ? "network" : "network.slash")
@@ -29,28 +36,68 @@ struct ContentView: View {
                 Text("Disconnect from the server")
             }).disabled(!socketService.isConnected)
             
-            HStack {
-                TextField("Message", text: $message)
-                Button(action: {
-                    socketService.send(message: message)
-                    message = ""
-                }, label: {
-                    Text("Send Message")
-                }).disabled(!socketService.isConnected)
-            }
-            .padding()
-            .border(.black, width: /*@START_MENU_TOKEN@*/1/*@END_MENU_TOKEN@*/)
-            VStack {
-                List {
-                    ForEach(socketService.receivedMessages, id: \.self) { message in
-                        Text(message)
-                    }
+            /*
+                Record Audio
+             */
+            
+            // Record Audio
+            Button(action: {
+                if isRecording {
+                    audioRecorder.stopRecording()
+                    isRecording = false
+                } else {
+                    audioRecorder.startRecording()
+                    isRecording = true
                 }
-            }
+            }, label: {
+                    ZStack {
+                        Circle()
+                            .strokeBorder(.black)
+                            .fill(.clear)
+                            .frame(width: UIScreen.main.bounds.width * 0.45)
+                        
+                        Image(systemName: isRecording ? "square" : "mic")
+                            .font(.system(size: 50))
+                    }
+                })
+            
+//            Button(action: {
+//                if isPlaying {
+//                    audioRecorder.stopPlaying()
+//                    isPlaying = false
+//                } else {
+//                    audioRecorder.startPlaying()
+//                    isPlaying = true
+//                }
+//            }, label: {
+//                    ZStack {
+//                        Circle()
+//                            .strokeBorder(.black)
+//                            .fill(.clear)
+//                            .frame(width: UIScreen.main.bounds.width * 0.45)
+//                        
+//                        Image(systemName: isPlaying ? "square" : "play")
+//                            .font(.system(size: 50))
+//                    }
+//                })
         }
         .padding()
     }
 } 
+
+struct MessageView: View {
+    @State var messages: [String]
+    
+    var body: some View {
+        VStack {
+            List {
+                ForEach(messages, id: \.self) { message in
+                    Text(message)
+                }
+            }
+        }
+    }
+}
 
 #Preview {
     ContentView()

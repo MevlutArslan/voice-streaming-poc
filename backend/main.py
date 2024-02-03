@@ -17,6 +17,7 @@ app = FastAPI()
 manager = ConnectionManager()
 
 import pyaudio
+from audio import is_audio_silent
 
 audio_manager = pyaudio.PyAudio()
 
@@ -36,11 +37,15 @@ async def websocket_endpoint(websocket: WebSocket):
     try:
         while True:
             data = await websocket.receive_bytes()
-            stream.write(data)
-            # await manager.send_personal_message(f"{data}", websocket)
+            is_silent = is_audio_silent(data, threshold=1.0)
+            if is_silent == False:
+                stream.write(data)
+
     except WebSocketDisconnect:
-        await manager.send_personal_message("Bye!!!", websocket)
         manager.disconnect(websocket)
+        stream.stop_stream()
+        stream.close()
+
 
 if __name__ == "__main__":
     ip_address = get_eth0_ip()

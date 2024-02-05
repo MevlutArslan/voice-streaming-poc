@@ -3,14 +3,13 @@ from connection_manager import ConnectionManager, get_eth0_ip
 import asyncio
 from audio import is_audio_silent, save_audio_as_file, get_transcription
 import numpy as np
-
+from llm import message_llm
 app = FastAPI()
 manager = ConnectionManager()
 
 @app.websocket("/communicate")
 async def websocket_endpoint(websocket: WebSocket):
     await manager.connect(websocket)
-    counter = 1
     accumulated_audio = np.array([], dtype=np.float32)
     try:
         while True:
@@ -21,12 +20,13 @@ async def websocket_endpoint(websocket: WebSocket):
                 # accumulate the arrays
                 accumulated_audio = np.concatenate((accumulated_audio, audio_chunk))
             except asyncio.TimeoutError:
-                print("Detected prolonged silence!")
                 if len(accumulated_audio) > 0:
                     audio_file_path = save_audio_as_file(accumulated_audio)
-                    print(f"SAVED FILE TO {audio_file_path}")
                     text = get_transcription(audio_file_path)
-                    print(text)
+
+                    for audio_chunk in message_llm(text):
+                        await websocket.send_bytes(audio_chunk)                    
+                    
                     accumulated_audio = np.array([], dtype=np.float32)
                 continue
     except WebSocketDisconnect:

@@ -15,18 +15,20 @@ async def websocket_endpoint(websocket: WebSocket):
     accumulated_bytes = b''
 
     dg_connection = None
-    connection_closed_event = asyncio.Event()
-    socket_closed = False
+    send_ping_exit_event = threading.Event()
     send_ping_thread: threading.Thread = None
+    
+    transcription_queue = []
+    transcription_queue_lock = threading.Lock()
     try:
         while True:
             data = await websocket.receive_bytes()
             
             if not dg_connection:
-                dg_connection = transcriber.connect_to_deepgram()
+                dg_connection = transcriber.connect_to_deepgram(transcription_queue, transcription_queue_lock)
                 # NOTE: Sending ping frames doesn't seem to prevent the timeout...
                 #       Needs further testing
-                # send_ping_thread = threading.Thread(target=lambda: transcriber.send_ping(dg_connection, socket_closed))
+                # send_ping_thread = threading.Thread(target=lambda: transcriber.send_ping(dg_connection, send_ping_exit_event))
                 # send_ping_thread.start()
 
             # Accumulate received data
@@ -34,25 +36,35 @@ async def websocket_endpoint(websocket: WebSocket):
             
             try:
                 if dg_connection:
-                    transcriber.send_data_deepgram(float32_to_linear16_bytes(accumulated_bytes), dg_connection)
+                    # NOTE: we only need this because the client sends float32 buffers, 
+                    #       which will be changed on the client side to get rid of this
+                    int16_audio = float32_to_linear16_bytes(accumulated_bytes)
+                    
+                    transcriber.send_data_deepgram(int16_audio, dg_connection)
+                    with transcription_queue_lock:
+                        if len(transcription_queue) > 0:
+                            print(f"Received transcription: {transcription_queue.pop()}")
             except Exception as e:
                 print(f"Failed to send data: {e}")
 
             # Reset accumulated bytes and length
             accumulated_bytes = b''
     except WebSocketDisconnect:
-        manager.disconnect(websocket)
-        socket_closed = True
-        if dg_connection:
-            transcriber.disconnect_deepgram(dg_connection)
-            dg_connection = None
-    finally:
         # Clean up resources, stop the stream, and close it
         manager.disconnect(websocket)
-        socket_closed = True
+        send_ping_exit_event.set()
+        # send_ping_thread.join()
         if dg_connection:
             transcriber.disconnect_deepgram(dg_connection)
             dg_connection = None
+    # finally:
+    #     # Clean up resources, stop the stream, and close it
+    #     manager.disconnect(websocket)
+    #     send_ping_exit_event.set()
+    #     send_ping_thread.join()
+    #     if dg_connection:
+    #         transcriber.disconnect_deepgram(dg_connection)
+    #         dg_connection = None
             
         
 if __name__ == "__main__":

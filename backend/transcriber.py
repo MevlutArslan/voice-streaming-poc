@@ -6,8 +6,9 @@ from deepgram import (
     LiveOptions,
     LiveClient
 )
-import asyncio
+import threading
 import time
+from typing import List
 
 load_dotenv()
 API_KEY = os.getenv("DG_API_KEY")
@@ -20,7 +21,7 @@ API_KEY = os.getenv("DG_API_KEY")
 
 deepgram = DeepgramClient(API_KEY)
 
-def connect_to_deepgram():
+def connect_to_deepgram(transcription_queue: List[str], transcription_queue_lock: threading.Lock):
     options = LiveOptions(
         language="en-US",
         punctuate=True,
@@ -38,7 +39,8 @@ def connect_to_deepgram():
         sentence = result.channel.alternatives[0].transcript
         if len(sentence) == 0:
             return
-        print(f"Received message: {sentence}")
+        with transcription_queue_lock:
+            transcription_queue.append(sentence)
         
     def on_metadata(self, metadata, **kwargs):
         print(f"{metadata}")
@@ -63,11 +65,8 @@ def send_data_deepgram(data, dg_connection):
     if dg_connection:
         dg_connection.send(data)
 
-def send_ping(dg_connection: LiveClient, socketClosed):
-    while True:
-        if socketClosed:
-            print("Detected Socket Closure, Exiting Send_Ping loop")
-            break
+def send_ping(dg_connection: LiveClient, exit_event: threading.Event):
+    while not exit_event.is_set():
         print("Sending Ping")
         dg_connection.send_ping()
         time.sleep(3)

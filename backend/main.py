@@ -5,6 +5,7 @@ import transcriber
 from audio import float32_to_linear16_bytes
 from llm import message_llm
 import threading
+from reactivex import empty, Observable
 
 app = FastAPI()
 manager = ConnectionManager()
@@ -15,21 +16,22 @@ async def websocket_endpoint(websocket: WebSocket):
     accumulated_bytes = b''
 
     dg_connection = None
-    send_ping_exit_event = threading.Event()
-    send_ping_thread: threading.Thread = None
+    send_ping_exit_event = asyncio.Event()
+    send_ping_task: asyncio.Task = None
+    # transcription_queue = []
+    # transcription_queue_lock = threading.Lock()
+    transcription_observable: Observable = empty()
     
-    transcription_queue = []
-    transcription_queue_lock = threading.Lock()
+    llm_thread: threading.Thread = None
     try:
         while True:
             data = await websocket.receive_bytes()
             
             if not dg_connection:
-                dg_connection = transcriber.connect_to_deepgram(transcription_queue, transcription_queue_lock)
+                dg_connection = await transcriber.connect_to_deepgram(transcription_observable)
                 # NOTE: Sending ping frames doesn't seem to prevent the timeout...
                 #       Needs further testing
-                # send_ping_thread = threading.Thread(target=lambda: transcriber.send_ping(dg_connection, send_ping_exit_event))
-                # send_ping_thread.start()
+                send_ping_task = asyncio.create_task(transcriber.send_ping(dg_connection))
 
             # Accumulate received data
             accumulated_bytes += data
@@ -40,10 +42,8 @@ async def websocket_endpoint(websocket: WebSocket):
                     #       which will be changed on the client side to get rid of this
                     int16_audio = float32_to_linear16_bytes(accumulated_bytes)
                     
-                    transcriber.send_data_deepgram(int16_audio, dg_connection)
-                    with transcription_queue_lock:
-                        if len(transcription_queue) > 0:
-                            print(f"Received transcription: {transcription_queue.pop()}")
+                    await transcriber.send_data_deepgram(int16_audio, dg_connection)
+      
             except Exception as e:
                 print(f"Failed to send data: {e}")
 
@@ -52,20 +52,11 @@ async def websocket_endpoint(websocket: WebSocket):
     except WebSocketDisconnect:
         # Clean up resources, stop the stream, and close it
         manager.disconnect(websocket)
-        send_ping_exit_event.set()
-        # send_ping_thread.join()
+        if send_ping_task:
+                send_ping_task.cancel()
         if dg_connection:
-            transcriber.disconnect_deepgram(dg_connection)
+            await transcriber.disconnect_deepgram(dg_connection)
             dg_connection = None
-    # finally:
-    #     # Clean up resources, stop the stream, and close it
-    #     manager.disconnect(websocket)
-    #     send_ping_exit_event.set()
-    #     send_ping_thread.join()
-    #     if dg_connection:
-    #         transcriber.disconnect_deepgram(dg_connection)
-    #         dg_connection = None
-            
         
 if __name__ == "__main__":
     ip_address = get_eth0_ip()

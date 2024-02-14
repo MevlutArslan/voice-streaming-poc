@@ -1,47 +1,60 @@
-
-def get_eth0_ip():
-    import socket
-    try:
-        # Get the host name of the machine
-        host_name = socket.gethostname()
-        # Get the IP address of the machine
-        ip_address = socket.gethostbyname(host_name)
-        return ip_address
-    except socket.error:
-        return None
-
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
-from connection_manager import ConnectionManager
+from connection_manager import ConnectionManager, get_eth0_ip
+import asyncio
+import transcriber
+from audio import float32_to_linear16_bytes
+from llm import message_llm
+import threading
 
 app = FastAPI()
 manager = ConnectionManager()
 
-import pyaudio
-
-audio_manager = pyaudio.PyAudio()
-
-# DISCLAIMER: Ideally you would send these from the client right 
-#             before you open the stream and not hard code it.
-# Hardcoded audio parameters
-rate = 48000
-channels = 1
-format = pyaudio.paFloat32
-
-# Create PyAudio stream with hardcoded parameters
-stream = audio_manager.open(rate=rate, channels=channels, format=format, output=True)
-
 @app.websocket("/communicate")
 async def websocket_endpoint(websocket: WebSocket):
     await manager.connect(websocket)
+    accumulated_bytes = b''
+
+    dg_connection = None
+    connection_closed_event = asyncio.Event()
+    socket_closed = False
+    send_ping_thread: threading.Thread = None
     try:
         while True:
             data = await websocket.receive_bytes()
-            stream.write(data)
-            # await manager.send_personal_message(f"{data}", websocket)
-    except WebSocketDisconnect:
-        await manager.send_personal_message("Bye!!!", websocket)
-        manager.disconnect(websocket)
+            
+            if not dg_connection:
+                dg_connection = transcriber.connect_to_deepgram()
+                # NOTE: Sending ping frames doesn't seem to prevent the timeout...
+                #       Needs further testing
+                # send_ping_thread = threading.Thread(target=lambda: transcriber.send_ping(dg_connection, socket_closed))
+                # send_ping_thread.start()
 
+            # Accumulate received data
+            accumulated_bytes += data
+            
+            try:
+                if dg_connection:
+                    transcriber.send_data_deepgram(float32_to_linear16_bytes(accumulated_bytes), dg_connection)
+            except Exception as e:
+                print(f"Failed to send data: {e}")
+
+            # Reset accumulated bytes and length
+            accumulated_bytes = b''
+    except WebSocketDisconnect:
+        manager.disconnect(websocket)
+        socket_closed = True
+        if dg_connection:
+            transcriber.disconnect_deepgram(dg_connection)
+            dg_connection = None
+    finally:
+        # Clean up resources, stop the stream, and close it
+        manager.disconnect(websocket)
+        socket_closed = True
+        if dg_connection:
+            transcriber.disconnect_deepgram(dg_connection)
+            dg_connection = None
+            
+        
 if __name__ == "__main__":
     ip_address = get_eth0_ip()
     if ip_address:

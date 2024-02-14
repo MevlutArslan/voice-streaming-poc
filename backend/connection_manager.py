@@ -13,4 +13,19 @@ class ConnectionManager:
 
     def disconnect(self, websocket: WebSocket):
         """disconnect event"""
-        self.active_connections.remove(websocket)
+        try:
+            self.active_connections.remove(websocket)
+        except ValueError:
+            pass  # Connection not in the list, no need to remove
+
+
+def get_eth0_ip():
+    import socket
+    try:
+        # Get the host name of the machine
+        host_name = socket.gethostname()
+        # Get the IP address of the machine
+        ip_address = socket.gethostbyname(host_name)
+        return ip_address
+    except socket.error:
+        return None

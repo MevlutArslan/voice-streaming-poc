@@ -4,12 +4,16 @@ from deepgram import (
     DeepgramClient,
     LiveTranscriptionEvents,
     LiveOptions,
-    AsyncLiveClient
+    AsyncLiveClient,
+    LiveResultResponse
 )
 import time
 from typing import List
 import json
 import asyncio
+from reactivex import Subject
+from llm import message_llm
+
 load_dotenv()
 API_KEY = os.getenv("DG_API_KEY")
 
@@ -21,36 +25,46 @@ API_KEY = os.getenv("DG_API_KEY")
 
 deepgram = DeepgramClient(API_KEY)
 
-async def connect_to_deepgram(transcription_observable):
+async def connect_to_deepgram(transcriptions: List[str], transcription_observable: Subject):
     options = LiveOptions(
+        model="nova-2-phonecall",
         language="en-US",
         punctuate=True,
         filler_words=True,
         numerals=True,
         encoding="linear16",
         sample_rate=48000,
-        endpointing=True
+        endpointing=False,
+        interim_results=True,
+        utterance_end_ms=2000 # if silence of 2000ms/2 seconds is detected then feed into llm
     )
     
     print("CONNECTING TO DEEPGRAM LIVE")
     dg_connection: AsyncLiveClient = deepgram.listen.asynclive.v("1")
 
-    async def on_message(self, result, **kwargs):
+    async def on_message(self, result: LiveResultResponse, **kwargs):
         sentence = result.channel.alternatives[0].transcript
         if len(sentence) == 0:
             return
-        
-        print("{}".format(sentence))
-        
+        if result.is_final:
+            transcriptions.append(sentence)
+    
     async def on_metadata(self, metadata, **kwargs):
         print(f"{metadata}")
 
     async def on_error(self, error, **kwargs):
         print(f"{error}")
+        
+    async def on_utterance_end(self, utterance_end, **kwargs):
+        print("Finished Speaking")
+        full_transcription = " ".join(transcriptions)
+        transcription_observable.on_next(full_transcription)
+        transcriptions.clear()
 
     dg_connection.on(LiveTranscriptionEvents.Transcript, on_message)
     dg_connection.on(LiveTranscriptionEvents.Metadata, on_metadata)
     dg_connection.on(LiveTranscriptionEvents.Error, on_error)
+    dg_connection.on(LiveTranscriptionEvents.UtteranceEnd, on_utterance_end)
 
     await dg_connection.start(options)
 
@@ -67,6 +81,6 @@ async def send_data_deepgram(data, dg_connection: AsyncLiveClient):
 
 async def send_ping(dg_connection: AsyncLiveClient):
     while True:
-        print("Sending Ping")
+        # print("Sending Ping")
         await dg_connection.send(json.dumps({"type": "KeepAlive"}))
         await asyncio.sleep(3)

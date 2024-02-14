@@ -5,10 +5,14 @@ import transcriber
 from audio import float32_to_linear16_bytes
 from llm import message_llm
 import threading
-from reactivex import empty, Observable
+from reactivex import empty, Subject
+import reactivex.operators as op
+from typing import List
+from starlette.websockets import WebSocketState
 
 app = FastAPI()
 manager = ConnectionManager()
+
 
 @app.websocket("/communicate")
 async def websocket_endpoint(websocket: WebSocket):
@@ -20,35 +24,47 @@ async def websocket_endpoint(websocket: WebSocket):
     send_ping_task: asyncio.Task = None
     # transcription_queue = []
     # transcription_queue_lock = threading.Lock()
-    transcription_observable: Observable = empty()
+    transcription_observable: Subject = Subject()
     
-    llm_thread: threading.Thread = None
+    
+    async def handle_transcription(sentence):
+        if websocket.client_state == WebSocketState.CONNECTED:
+            await message_llm(sentence)
+        else:
+            transcription_observable.dispose()
+    
+    transcription_observable.subscribe(
+        on_next=lambda sentence: asyncio.create_task(handle_transcription(sentence))
+    )
+    
+    transcriptions: List[str] = []
     try:
         while True:
-            data = await websocket.receive_bytes()
-            
-            if not dg_connection:
-                dg_connection = await transcriber.connect_to_deepgram(transcription_observable)
-                # NOTE: Sending ping frames doesn't seem to prevent the timeout...
-                #       Needs further testing
-                send_ping_task = asyncio.create_task(transcriber.send_ping(dg_connection))
-
-            # Accumulate received data
-            accumulated_bytes += data
-            
             try:
-                if dg_connection:
-                    # NOTE: we only need this because the client sends float32 buffers, 
-                    #       which will be changed on the client side to get rid of this
-                    int16_audio = float32_to_linear16_bytes(accumulated_bytes)
-                    
-                    await transcriber.send_data_deepgram(int16_audio, dg_connection)
-      
-            except Exception as e:
-                print(f"Failed to send data: {e}")
+                data = await asyncio.wait_for(websocket.receive_bytes(), 3)
+                if not dg_connection:
+                    dg_connection = await transcriber.connect_to_deepgram(transcriptions, transcription_observable)
+                    send_ping_task = asyncio.create_task(transcriber.send_ping(dg_connection))
 
-            # Reset accumulated bytes and length
-            accumulated_bytes = b''
+                # Accumulate received data
+                accumulated_bytes += data
+                try:
+                    if dg_connection:
+                        # NOTE: we only need this because the client sends float32 buffers, 
+                        #       which will be changed on the client side to get rid of this
+                        # int16_audio = float32_to_linear16_bytes(accumulated_bytes)
+                        
+                        await transcriber.send_data_deepgram(accumulated_bytes, dg_connection)
+                except Exception as e:
+                    print(f"Failed to send data: {e}")
+
+                # Reset accumulated bytes and length
+                accumulated_bytes = b''
+            except TimeoutError:
+                # close the connection to the transcriber as Deepgram timesout when 
+                # it doesn't receive audio data for 12 seconds
+                await transcriber.disconnect_deepgram(dg_connection)
+                dg_connection = None
     except WebSocketDisconnect:
         # Clean up resources, stop the stream, and close it
         manager.disconnect(websocket)

@@ -130,7 +130,7 @@ class PreliminaryLLM:
     def __init__(self):
         self.model = ChatOpenAI(model="gpt-4", temperature=0)
         
-    def feed_into_layer_one(self, transcription: str) -> str:
+    def format_transcription(self, transcription: str) -> str:
         system_message = SystemMessage('''
             You are a language formatter tasked with refining the output 
             of a speech transcription engine. Your objective is to take 
@@ -155,7 +155,7 @@ class PreliminaryLLM:
         
         return chain.invoke({"transcript": transcription})
     
-    def feed_into_layer_two(self, message: str) -> bool:
+    def detect_end_of_thought(self, message: str) -> bool:
         system_message = SystemMessage(
             '''
             You are an end-of-thought detector tasked with analyzing accumulated 
@@ -193,8 +193,8 @@ class PreliminaryLLM:
         return chain.invoke({"transcript":message})["end_of_thought_detected"]
     
     def run(self, transcript: str) -> str:
-        layer_one_output = self.feed_into_layer_one(transcript)
-        layer_two_output = self.feed_into_layer_two(layer_one_output)
+        layer_one_output = self.format_transcription(transcript)
+        layer_two_output = self.detect_end_of_thought(layer_one_output)
         
         return layer_two_output
     

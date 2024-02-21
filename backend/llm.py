@@ -155,7 +155,7 @@ class PreliminaryLLM:
         
         return chain.invoke({"transcript": transcription})
     
-    def feed_into_layer_two(self, message: str) -> str:
+    def feed_into_layer_two(self, message: str) -> bool:
         system_message = SystemMessage(
             '''
             You are an end-of-thought detector tasked with analyzing accumulated 
@@ -190,7 +190,7 @@ class PreliminaryLLM:
 
         chain = prompt | self.model | output_parser
         
-        return chain.invoke({"transcript":message})
+        return chain.invoke({"transcript":message})["end_of_thought_detected"]
     
     def run(self, transcript: str) -> str:
         layer_one_output = self.feed_into_layer_one(transcript)

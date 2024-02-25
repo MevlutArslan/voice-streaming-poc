@@ -12,7 +12,6 @@ from typing import List
 import json
 import asyncio
 from reactivex import Subject
-from llm import message_llm
 
 load_dotenv()
 API_KEY = os.getenv("DG_API_KEY")
@@ -34,9 +33,9 @@ async def connect_to_deepgram(transcriptions: List[str], transcription_observabl
         numerals=True,
         encoding="linear16",
         sample_rate=48000,
-        endpointing=False,
-        interim_results=True,
-        utterance_end_ms=2000 # if silence of 2000ms/2 seconds is detected then feed into llm
+        endpointing=True,
+        # interim_results=True,
+        # utterance_end_ms=2000 # if silence of 2000ms/2 seconds is detected then feed into llm
     )
     
     print("CONNECTING TO DEEPGRAM LIVE")
@@ -48,6 +47,11 @@ async def connect_to_deepgram(transcriptions: List[str], transcription_observabl
             return
         if result.is_final:
             transcriptions.append(sentence)
+            if len(transcriptions) > 1:
+                concatenated_transcription = " ".join(transcriptions)
+            else:
+                concatenated_transcription = "".join(transcriptions)
+            transcription_observable.on_next(concatenated_transcription)
     
     async def on_metadata(self, metadata, **kwargs):
         print(f"{metadata}")
@@ -57,14 +61,14 @@ async def connect_to_deepgram(transcriptions: List[str], transcription_observabl
         
     async def on_utterance_end(self, utterance_end, **kwargs):
         print("Finished Speaking")
-        full_transcription = " ".join(transcriptions)
-        transcription_observable.on_next(full_transcription)
-        transcriptions.clear()
+        # full_transcription = " ".join(transcriptions)
+        # transcription_observable.on_next(full_transcription)
+        # transcriptions.clear()
 
     dg_connection.on(LiveTranscriptionEvents.Transcript, on_message)
     dg_connection.on(LiveTranscriptionEvents.Metadata, on_metadata)
     dg_connection.on(LiveTranscriptionEvents.Error, on_error)
-    dg_connection.on(LiveTranscriptionEvents.UtteranceEnd, on_utterance_end)
+    # dg_connection.on(LiveTranscriptionEvents.UtteranceEnd, on_utterance_end)
 
     await dg_connection.start(options)
 

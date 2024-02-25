@@ -3,41 +3,69 @@ from connection_manager import ConnectionManager, get_eth0_ip
 import asyncio
 import transcriber
 from audio import float32_to_linear16_bytes
-from llm import message_llm
+from llm import TranscriptionHandler, generate_response, ModelResponseHandler
 import threading
-from reactivex import empty, Subject
-import reactivex.operators as op
+from reactivex import Subject, Observer, Observable, create
+import reactivex.operators as ops
 from typing import List
 from starlette.websockets import WebSocketState
+# from audio import TranscriptionSink
+from openai import AsyncOpenAI
+import re
 
 app = FastAPI()
 manager = ConnectionManager()
 
-
 @app.websocket("/communicate")
 async def websocket_endpoint(websocket: WebSocket):
     await manager.connect(websocket)
-    accumulated_bytes = b''
-
     dg_connection = None
-    send_ping_exit_event = asyncio.Event()
     send_ping_task: asyncio.Task = None
-    # transcription_queue = []
-    # transcription_queue_lock = threading.Lock()
+
     transcription_observable: Subject = Subject()
-    
-    
-    async def handle_transcription(sentence):
-        if websocket.client_state == WebSocketState.CONNECTED:
-            await message_llm(sentence)
-        else:
-            transcription_observable.dispose()
-    
-    transcription_observable.subscribe(
-        on_next=lambda sentence: asyncio.create_task(handle_transcription(sentence))
-    )
-    
+    transcription_handler = TranscriptionHandler()
     transcriptions: List[str] = []
+    
+    response_client = AsyncOpenAI()
+    response_handler = ModelResponseHandler()
+
+    async def has_detected_end_of_thought(transcription_handler: TranscriptionHandler, transcription: str) -> tuple[bool, str]:
+        print("Received Transcriptions from Sink: {}".format(transcription))
+        end_of_thought_detected, clean_transcription = await transcription_handler.run(transcription)
+        return (end_of_thought_detected, clean_transcription)
+
+    async def handle_transcription(raw_transcription: str):
+        if websocket.client_state != WebSocketState.CONNECTED:
+            transcription_observable.dispose()
+            return
+        
+        end_of_thought_detected, transcription = await has_detected_end_of_thought(transcription_handler= transcription_handler,
+                                                                                   transcription= raw_transcription)
+        
+        if end_of_thought_detected == False:
+            return
+
+        print("End of thought detected for: {}".format(transcription))
+        transcriptions.clear()
+        accumulated_tokens = []
+        async for token in generate_response(response_client, transcription):
+            if token == None:
+                continue
+            
+            accumulated_tokens.append(token)
+            if re.match(r'[.!?]', token):
+                should_return_response, response_text = await response_handler.run(accumulated_tokens)
+                
+                if should_return_response == False:
+                    continue
+                
+                print(response_text)
+                accumulated_tokens.clear()
+            
+            
+    transcription_observable.subscribe(
+        on_next=lambda transcription: asyncio.create_task(handle_transcription(transcription))
+    )
     try:
         while True:
             try:
@@ -46,20 +74,15 @@ async def websocket_endpoint(websocket: WebSocket):
                     dg_connection = await transcriber.connect_to_deepgram(transcriptions, transcription_observable)
                     send_ping_task = asyncio.create_task(transcriber.send_ping(dg_connection))
 
-                # Accumulate received data
-                accumulated_bytes += data
                 try:
                     if dg_connection:
                         # NOTE: we only need this because the client sends float32 buffers, 
                         #       which will be changed on the client side to get rid of this
                         # int16_audio = float32_to_linear16_bytes(accumulated_bytes)
                         
-                        await transcriber.send_data_deepgram(accumulated_bytes, dg_connection)
+                        await transcriber.send_data_deepgram(data, dg_connection)
                 except Exception as e:
                     print(f"Failed to send data: {e}")
-
-                # Reset accumulated bytes and length
-                accumulated_bytes = b''
             except TimeoutError:
                 # close the connection to the transcriber as Deepgram timesout when 
                 # it doesn't receive audio data for 12 seconds

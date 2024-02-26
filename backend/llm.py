@@ -1,74 +1,48 @@
 from langchain_core.prompts import (
-    HumanMessagePromptTemplate, ChatPromptTemplate, PromptTemplate, FewShotPromptTemplate, MessagesPlaceholder
+    HumanMessagePromptTemplate, ChatPromptTemplate, MessagesPlaceholder
 )
 from langchain_openai import ChatOpenAI
 from langchain_core.output_parsers import StrOutputParser, JsonOutputParser
 from langchain_core.messages import SystemMessage
-from openai import AsyncOpenAI
-# chat_client = AsyncOpenAI(base_url="http://localhost:1234/v1", api_key="not-needed")
-from typing import List, Dict
+from typing import List
 from langchain_core.runnables.history import RunnableWithMessageHistory
 from langchain.memory import ChatMessageHistory
 from langchain_core.chat_history import BaseChatMessageHistory
 from langchain.chains import LLMChain
+
 class TranscriptionHandler:
     def __init__(self):
         self.model = ChatOpenAI(model="gpt-4", temperature=0)
-        self.layer_one_output_parser = StrOutputParser()
-        self.layer_two_output_parser = JsonOutputParser()
+        self.json_parser = JsonOutputParser()
         
-    async def format_transcription(self, transcription: str) -> str:
+    async def run(self, transcription: str) -> tuple[bool, str]:
+        print("Received Format request: {}".format(transcription))
+        ## TODO: Improve this further
         system_message = SystemMessage('''
-            You are a language formatter tasked with refining the output 
-            of a speech transcription engine. Your objective is to take 
-            a series of unformatted words and sentences and organize 
-            them into coherent, grammatically correct passages with 
-            appropriate punctuation, without altering the original 
-            content of the text. If the sentence is incomplete leave it as incomplete and return the corrected string in whatever state it may be in.
-            
+             You are a language formatter and AI component within a larger AI system designed to passively listen to the user's spoken 
+             thoughts. Your role is to refine the output of a speech transcription engine and decide whether the AI should 
+             respond to the user based on specific conditions.
+
+            Your objective is to take a series of unformatted words and sentences, organize them into coherent, grammatically correct 
+            passages with appropriate punctuation, and determine if the AI should respond. If the sentence is incomplete, leave 
+            it as incomplete and leave the corrected string in whatever state it may be in and then decide if the model_should_respond.
+
             Example: "Well, I'm trying to figure out how to what you might call it, how to prompt my model properly.  Do do you think using multiple layers of elements Could  Do you think using multi  layers of LLMs  be useful?"
             Formatted: "Well... I am trying to figure out how to... what you might call it... how to prompt my model properly. Do you think using multiple layers of LLMs be useful?
-            
-            Only respond with the updated transcript and nothing else.
-            ''')
-        
-        human_message_prompt = HumanMessagePromptTemplate.from_template("{transcript}")
-        
-        prompt = ChatPromptTemplate.from_messages([system_message,human_message_prompt])
-        
-        chain = prompt | self.model | self.layer_one_output_parser
-        
-        return await chain.ainvoke({"transcript": transcription})
-    
-    async def detect_end_of_thought(self, message: str) -> bool:
-        system_message = SystemMessage(
-           '''
-            You are an AI in a large AI chain of operations that passively listens to the user thinking out loud. 
-            As a Decision making layer, your job is to determine if the AI should respond to the user.
 
-            Some of the conditions that require AI to intervene are:
-            1. When the user asks specifically asks you a question.
-            2. When the user has made a substantial error in their thinking.
-            3. When the user is drifting away from the main topic and is getting distracted.
-
-            Please return a JSON object as your response using the following key-value pair:
+            Please provide a JSON response with the following key-value pairs:
+            "formatted_transcript": <String>,
             "model_should_respond": <True or False>
-            '''
-        )
+        ''')
         
         human_message_prompt = HumanMessagePromptTemplate.from_template("{transcript}")
         
-        prompt = ChatPromptTemplate.from_messages([system_message,human_message_prompt])
-
-        chain = prompt | self.model | self.layer_two_output_parser
-        result = await chain.ainvoke({"transcript":message})
-        return result["model_should_respond"]
-    
-    async def run(self, transcript: str) -> tuple[bool, str]:
-        layer_one_output = await self.format_transcription(transcript)
-        layer_two_output = await self.detect_end_of_thought(layer_one_output)
+        prompt = ChatPromptTemplate.from_messages([system_message, human_message_prompt])
         
-        return (layer_two_output, layer_one_output)
+        chain = prompt | self.model | self.json_parser
+        result = await chain.ainvoke({"transcript": transcription})
+
+        return (result["model_should_respond"], result["formatted_transcript"])
 
 class ChatModel:
     def __init__(self) -> None:
@@ -149,7 +123,7 @@ class ModelResponseHandler:
         prompt = ChatPromptTemplate.from_messages([system_message, human_message_prompt])
         
         chain: LLMChain = prompt | self.model | self.output_parser
-        
+
         result = await chain.ainvoke({"model_response": model_response})
         should_return_response = result["should_return_response"]
         

@@ -1,10 +1,16 @@
-from langchain_core.prompts import HumanMessagePromptTemplate, ChatPromptTemplate, PromptTemplate, FewShotPromptTemplate
+from langchain_core.prompts import (
+    HumanMessagePromptTemplate, ChatPromptTemplate, PromptTemplate, FewShotPromptTemplate, MessagesPlaceholder
+)
 from langchain_openai import ChatOpenAI
 from langchain_core.output_parsers import StrOutputParser, JsonOutputParser
 from langchain_core.messages import SystemMessage
 from openai import AsyncOpenAI
 # chat_client = AsyncOpenAI(base_url="http://localhost:1234/v1", api_key="not-needed")
-from typing import List
+from typing import List, Dict
+from langchain_core.runnables.history import RunnableWithMessageHistory
+from langchain.memory import ChatMessageHistory
+from langchain_core.chat_history import BaseChatMessageHistory
+from langchain.chains import LLMChain
 class TranscriptionHandler:
     def __init__(self):
         self.model = ChatOpenAI(model="gpt-4", temperature=0)
@@ -37,25 +43,16 @@ class TranscriptionHandler:
     async def detect_end_of_thought(self, message: str) -> bool:
         system_message = SystemMessage(
            '''
-            You are tasked with developing an end-of-thought detection system that accurately identifies pauses or shifts 
-            in conversation indicating the completion of a user's current idea. Your objective is to analyze incoming speech 
-            data and determine whether the user's current train of thought has concluded or if further input is required.
+            You are an AI in a large AI chain of operations that passively listens to the user thinking out loud. 
+            As a Decision making layer, your job is to determine if the AI should respond to the user.
 
-            Consider various linguistic cues and patterns that signify the end of a thought, such as concluding statements, 
-            pauses, or shifts in topic. Additionally, take into account the context and coherence of the conversation to 
-            accurately gauge the user's intended message.
+            Some of the conditions that require AI to intervene are:
+            1. When the user asks specifically asks you a question.
+            2. When the user has made a substantial error in their thinking.
+            3. When the user is drifting away from the main topic and is getting distracted.
 
-            Upon detecting an apparent end of thought, your system should provide a signal indicating readiness to proceed with 
-            further interaction or action. Conversely, if the analysis suggests that the user's thought is still ongoing, withhold 
-            the signal to allow for continued listening and processing.
-
-            Your role is crucial in facilitating smooth and efficient communication between the user and the system, ensuring 
-            timely responses and appropriate handling of input.
-
-            Your output format should adhere to the following structure of a JSON object:
-            {
-                "end_of_thought_detected": <boolean> (True or False)
-            }
+            Please return a JSON object as your response using the following key-value pair:
+            "model_should_respond": <True or False>
             '''
         )
         
@@ -65,7 +62,7 @@ class TranscriptionHandler:
 
         chain = prompt | self.model | self.layer_two_output_parser
         result = await chain.ainvoke({"transcript":message})
-        return result["end_of_thought_detected"]
+        return result["model_should_respond"]
     
     async def run(self, transcript: str) -> tuple[bool, str]:
         layer_one_output = await self.format_transcription(transcript)
@@ -73,18 +70,55 @@ class TranscriptionHandler:
         
         return (layer_two_output, layer_one_output)
 
+class ChatModel:
+    def __init__(self) -> None:
+        self.model = ChatOpenAI(
+            model="gpt-4",
+            streaming=True,
+            temperature=0.5
+        )
+        
+        system_message = SystemMessage('''
+        As an LLM used in a voice chat environment, prioritize brevity and focus in your responses. 
+        Avoid lengthy or verbose answers unless absolutely necessary. Your goal is to provide concise and relevant information that is 
+        easy to understand and digest in a conversational setting.
+    
+        Please ensure that your responses are tailored to the context of the conversation and address the user's query directly. 
+        Avoid unnecessary details or extraneous information that may detract from the clarity and effectiveness of your response.
 
-async def generate_response(client: AsyncOpenAI, prompt: str):
-    async with await client.chat.completions.create(
-        model="gpt-4",
-        messages=[{"role": "system", "content": "You are an LLM used in a voice chat environment, make sure you do not respond with things like: 'Here is a python script ...'"},
-                  {"role": "user", "content": prompt}],
-        stream=True,
-        temperature=0.5
-    ) as response_stream:
+        Remember, in a voice chat environment, clear and succinct communication is key to maintaining engagement and facilitating 
+        smooth interactions. Keep your answers brief and to the point, unless additional context or explanation is required to fully 
+        address the user's inquiry.
+        ''')
+                                   
+        human_message_prompt = HumanMessagePromptTemplate.from_template("{message}")
+        
+        prompt = ChatPromptTemplate.from_messages([
+            system_message,
+            MessagesPlaceholder(variable_name="history"), 
+            human_message_prompt
+        ])
+       
+        self.chat_history = {}
+        
+        self.chain = prompt | self.model
+
+        self.chain_with_memory = RunnableWithMessageHistory(
+            self.chain,
+            self.get_session_history,
+            input_messages_key="message",
+            history_messages_key="history"
+        )
+        
+    async def invoke(self, message: str):
+        response_stream = self.chain_with_memory.astream({"message": message}, config={"configurable": {"session_id": "abc123"}})
         async for partial_response in response_stream:
-            yield partial_response.choices[0].delta.content
-            
+            yield partial_response.content
+                
+    def get_session_history(self, session_id: str) -> BaseChatMessageHistory:
+        if session_id not in self.chat_history:
+            self.chat_history[session_id] = ChatMessageHistory()
+        return self.chat_history[session_id]
             
 class ModelResponseHandler:
     def __init__(self):
@@ -102,17 +136,26 @@ class ModelResponseHandler:
 
             Remove explicit displays of tokens like escape characters.
             Make sure to format the string to accomodate an output parser to be able to extract your response as a JSON object.
+            Try not to end the result_text with the following structure "1." where the output parser might have trouble. 
             
-            please structure your output as a valid Json object using the following variable names: response_text for the string, should_return_response for the Boolean 
+            If you have deemed should_return_response to be True then return a JSON object with key-value mappings using:
+            "should_return_response": <True or False>
+            "response_text": String
+            
+            If you have deemed should_return_response to be False then return only a JSON with "should_return_response": <True or False>
         ''')
         human_message_prompt = HumanMessagePromptTemplate.from_template("{model_response}")
 
         prompt = ChatPromptTemplate.from_messages([system_message, human_message_prompt])
         
-        chain = prompt | self.model | self.output_parser
+        chain: LLMChain = prompt | self.model | self.output_parser
         
         result = await chain.ainvoke({"model_response": model_response})
+        should_return_response = result["should_return_response"]
         
-        return (result["should_return_response"], result["response_text"])
+        if should_return_response:
+            return (should_return_response, result["response_text"])
+        
+        return (should_return_response, "")
         
         

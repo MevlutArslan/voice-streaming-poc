@@ -16,29 +16,23 @@ from reactivex import Subject
 load_dotenv()
 API_KEY = os.getenv("DG_API_KEY")
 
-# config = DeepgramClientOptions(
-#     verbose=logging.DEBUG, options={"keepalive": "true"}
-# )
-
-# deepgram = DeepgramClient(API_KEY, config=config)
-
 deepgram = DeepgramClient(API_KEY)
 
 async def connect_to_deepgram(transcriptions: List[str], transcription_observable: Subject):
     options = LiveOptions(
-        model="nova-2-phonecall",
+        model="nova-2-conversationalai",
         language="en-US",
         punctuate=True,
         filler_words=True,
         numerals=True,
         encoding="linear16",
         sample_rate=48000,
-        endpointing=True,
+        endpointing=1500,
         # interim_results=True,
         # utterance_end_ms=2000 # if silence of 2000ms/2 seconds is detected then feed into llm
     )
     
-    print("CONNECTING TO DEEPGRAM LIVE")
+    print("Connecting to deepgram")
     dg_connection: AsyncLiveClient = deepgram.listen.asynclive.v("1")
 
     async def on_message(self, result: LiveResultResponse, **kwargs):
@@ -59,16 +53,9 @@ async def connect_to_deepgram(transcriptions: List[str], transcription_observabl
     async def on_error(self, error, **kwargs):
         print(f"{error}")
         
-    async def on_utterance_end(self, utterance_end, **kwargs):
-        print("Finished Speaking")
-        # full_transcription = " ".join(transcriptions)
-        # transcription_observable.on_next(full_transcription)
-        # transcriptions.clear()
-
     dg_connection.on(LiveTranscriptionEvents.Transcript, on_message)
     dg_connection.on(LiveTranscriptionEvents.Metadata, on_metadata)
     dg_connection.on(LiveTranscriptionEvents.Error, on_error)
-    # dg_connection.on(LiveTranscriptionEvents.UtteranceEnd, on_utterance_end)
 
     await dg_connection.start(options)
 
@@ -76,7 +63,7 @@ async def connect_to_deepgram(transcriptions: List[str], transcription_observabl
 
 async def disconnect_deepgram(dg_connection):
     if dg_connection:
-        print("DISCONNECTING FROM DEEPGRAM")
+        print("Disconnecting from deepgram")
         await dg_connection.finish()
 
 async def send_data_deepgram(data, dg_connection: AsyncLiveClient):

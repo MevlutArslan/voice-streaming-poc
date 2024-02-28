@@ -14,11 +14,13 @@ import Foundation
     * Be Able to Send Data
     * Disconnect from the socket
 */
+
 class SocketService: NSObject, URLSessionWebSocketDelegate, ObservableObject {
-    private let url = URL(string: "ws://10.0.0.169:8999/communicate")!
+    private let url = URL(string: "ws://10.0.0.61:8999/communicate")!
 
     private var socket: URLSessionWebSocketTask?
     private var session: URLSession?
+    private var audioPlayer: AudioPlayer?
     
     @Published var isConnected = false
     @Published var receivedMessages: [String] = []
@@ -27,6 +29,7 @@ class SocketService: NSObject, URLSessionWebSocketDelegate, ObservableObject {
         super.init()
         
         session = URLSession(configuration: .ephemeral, delegate: self, delegateQueue: OperationQueue())
+        audioPlayer = AudioPlayer()
     }
     
     func connect() {
@@ -34,6 +37,7 @@ class SocketService: NSObject, URLSessionWebSocketDelegate, ObservableObject {
         socket = session?.webSocketTask(with: url)
         
         socket?.resume()
+        self.ping()
     }
     
     func disconnect() {
@@ -50,49 +54,50 @@ class SocketService: NSObject, URLSessionWebSocketDelegate, ObservableObject {
     }
     
     /// Caller of this function should make sure the client is connected to the server.
-    func send(data: Data) {
-        socket?.send(.data(data), completionHandler: { error in
-            if let error = error {
-                print("❌ Error encountered while sending data: \(String(describing: error))")
-            }
-        })
+    func send(data: Data) async {
+        do {
+            try await socket?.send(.data(data))
+        }catch{
+            print("❌ Error encountered while sending message: \(String(describing: error))")
+        }
     }
     
-    func receive() {
+    func receive() async throws {
         if !self.isConnected {
             return
         }
         
-        socket?.receive(completionHandler: { [weak self] result in
-            switch result {
-            case .success(let message):
-                switch message {
-                case .string(let string):
-                    print("Received Message as String: \(string)")
-                    self?.receivedMessages.append(string)
-                    break
-                case .data(let data):
-                    print("Received Message as Data: \(data)")
-                    break
-                @unknown default:
-                    fatalError("Received an unexpected type of message!")
-                }
+        do {
+            var response: URLSessionWebSocketTask.Message? = try await socket?.receive()
+            switch(response) {
+            case .string(let string):
+                print("Received Message as String: \(string)")
+                self.receivedMessages.append(string)
                 break
-            case .failure(let error):
-                print("Received Error: \(error)")
-                self?.isConnected = false
+            case .data(let data):
+                print("Received Message as Data: \(data)")
+                self.audioPlayer?.playOpusAudio(opusData: data)
                 break
+            default:
+                fatalError("Received an unexpected type of message!")
             }
-            
-            self?.receive()
-        })
+        } catch {
+            print("Received Error: \(error)")
+            DispatchQueue.main.async(execute: {
+                self.isConnected = false
+            })
+        }
+   
+        try await self.receive()
     }
     
     func ping() {
         socket?.sendPing(pongReceiveHandler: { [weak self] error in
             if let error = error {
                 print("❌ Received error while pinging server: \(error)")
-                self?.isConnected = false
+                DispatchQueue.main.async(execute: {
+                    self?.isConnected = false
+                })
             }
             
             DispatchQueue.main.asyncAfter(deadline: .now() + .seconds(5)) {
@@ -104,18 +109,26 @@ class SocketService: NSObject, URLSessionWebSocketDelegate, ObservableObject {
     func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {
         if let error = error {
             print("❌ URLSession task did complete with error: \(error)")
-            isConnected = false
+            DispatchQueue.main.async(execute: {
+                self.isConnected = false
+            })
         }
     }
     
     func urlSession(_ session: URLSession, webSocketTask: URLSessionWebSocketTask, didOpenWithProtocol protocol: String?) {
         print("🤝 Completed Handshake Successfully.")
-        isConnected = true
-        receive()
+        DispatchQueue.main.async(execute: {
+            self.isConnected = true
+        })
+        Task.init {
+            try await receive()
+        }
     }
     
     func urlSession(_ session: URLSession, webSocketTask: URLSessionWebSocketTask, didCloseWith closeCode: URLSessionWebSocketTask.CloseCode, reason: Data?) {
         print("Closed connection to socket due to : \(closeCode)")
-        isConnected = false
+        DispatchQueue.main.async(execute: {
+            self.isConnected = false
+        })
     }
 }

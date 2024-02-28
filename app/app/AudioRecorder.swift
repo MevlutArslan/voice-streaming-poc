@@ -137,37 +137,39 @@ class AudioRecorder {
 //            self.recognitionRequest.append(buffer)
 
             if self.socketService.isConnected {
-                var shouldSendBuffer = true
+//                var shouldSendBuffer = true
                 let bytebuffer = buffer.data()
+//
+//                let isSilent = self.audioIsSilent(buffer)
+//                
+//                if !isSilent {
+//                    // Reset silent window state when non-silent audio is detected
+//                    isInASilentWindow = false
+//                    silentWindowStartTime = nil
+//                }
+//
+//                if isSilent && !isInASilentWindow {
+//                    // Start a new silent window
+//                    isInASilentWindow = true
+//                    silentWindowStartTime = Date()
+//                } else if isSilent && isInASilentWindow {
+//                    // Calculate the time passed since the start of the silent window
+//                    if let silentWindowStartTime = silentWindowStartTime {
+//                        let timePassed = Date().timeIntervalSince(silentWindowStartTime)
+//
+//                        if timePassed >= 10 {
+//                            // If silent window duration exceeds 1 second, block streaming of the buffer
+////                            shouldSendBuffer = false
+//                        }
+//                    }
+//                }
 
-                let isSilent = self.audioIsSilent(buffer)
-                
-                if !isSilent {
-                    // Reset silent window state when non-silent audio is detected
-                    isInASilentWindow = false
-                    silentWindowStartTime = nil
+//                if shouldSendBuffer {
+//                    print("sending data!")
+                Task.init {
+                    await self.socketService.send(data: bytebuffer)
                 }
-
-                if isSilent && !isInASilentWindow {
-                    // Start a new silent window
-                    isInASilentWindow = true
-                    silentWindowStartTime = Date()
-                } else if isSilent && isInASilentWindow {
-                    // Calculate the time passed since the start of the silent window
-                    if let silentWindowStartTime = silentWindowStartTime {
-                        let timePassed = Date().timeIntervalSince(silentWindowStartTime)
-
-                        if timePassed >= 5 {
-                            // If silent window duration exceeds 1 second, block streaming of the buffer
-                            shouldSendBuffer = false
-                        }
-                    }
-                }
-
-                if shouldSendBuffer {
-                    print("sending data!")
-                    self.socketService.send(data: bytebuffer)
-                }
+//                }
             }
         }
         

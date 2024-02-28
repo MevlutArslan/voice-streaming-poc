@@ -12,6 +12,9 @@
 		47A98B152B6832DE0024D66C /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 47A98B142B6832DE0024D66C /* Assets.xcassets */; };
 		47A98B192B6832DE0024D66C /* Preview Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 47A98B182B6832DE0024D66C /* Preview Assets.xcassets */; };
 		47A98B202B6833170024D66C /* SocketService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 47A98B1F2B6833170024D66C /* SocketService.swift */; };
+		47BAEC022B7156EC00F3A74D /* Copus in Frameworks */ = {isa = PBXBuildFile; productRef = 47BAEC012B7156EC00F3A74D /* Copus */; };
+		47BAEC042B7156EC00F3A74D /* Opus in Frameworks */ = {isa = PBXBuildFile; productRef = 47BAEC032B7156EC00F3A74D /* Opus */; };
+		47D27CB92B69DB230081848C /* AudioRecorder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 47D27CB82B69DB230081848C /* AudioRecorder.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -23,6 +26,7 @@
 		47A98B182B6832DE0024D66C /* Preview Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = "Preview Assets.xcassets"; sourceTree = "<group>"; };
 		47A98B1F2B6833170024D66C /* SocketService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SocketService.swift; sourceTree = "<group>"; };
 		47A98B212B6833A80024D66C /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
+		47D27CB82B69DB230081848C /* AudioRecorder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioRecorder.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -30,6 +34,8 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				47BAEC022B7156EC00F3A74D /* Copus in Frameworks */,
+				47BAEC042B7156EC00F3A74D /* Opus in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -62,6 +68,7 @@
 				47A98B162B6832DE0024D66C /* app.entitlements */,
 				47A98B172B6832DE0024D66C /* Preview Content */,
 				47A98B1F2B6833170024D66C /* SocketService.swift */,
+				47D27CB82B69DB230081848C /* AudioRecorder.swift */,
 			);
 			path = app;
 			sourceTree = "<group>";
@@ -91,6 +98,8 @@
 			);
 			name = app;
 			packageProductDependencies = (
+				47BAEC012B7156EC00F3A74D /* Copus */,
+				47BAEC032B7156EC00F3A74D /* Opus */,
 			);
 			productName = app;
 			productReference = 47A98B0D2B6832DB0024D66C /* app.app */;
@@ -121,6 +130,7 @@
 			);
 			mainGroup = 47A98B042B6832DB0024D66C;
 			packageReferences = (
+				47BAEC002B7156EC00F3A74D /* XCRemoteSwiftPackageReference "swift-opus" */,
 			);
 			productRefGroup = 47A98B0E2B6832DB0024D66C /* Products */;
 			projectDirPath = "";
@@ -148,6 +158,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				47D27CB92B69DB230081848C /* AudioRecorder.swift in Sources */,
 				47A98B132B6832DB0024D66C /* ContentView.swift in Sources */,
 				47A98B112B6832DB0024D66C /* appApp.swift in Sources */,
 				47A98B202B6833170024D66C /* SocketService.swift in Sources */,
@@ -371,6 +382,30 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		47BAEC002B7156EC00F3A74D /* XCRemoteSwiftPackageReference "swift-opus" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/alta/swift-opus";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 0.0.2;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		47BAEC012B7156EC00F3A74D /* Copus */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 47BAEC002B7156EC00F3A74D /* XCRemoteSwiftPackageReference "swift-opus" */;
+			productName = Copus;
+		};
+		47BAEC032B7156EC00F3A74D /* Opus */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 47BAEC002B7156EC00F3A74D /* XCRemoteSwiftPackageReference "swift-opus" */;
+			productName = Opus;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = 47A98B052B6832DB0024D66C /* Project object */;
 }

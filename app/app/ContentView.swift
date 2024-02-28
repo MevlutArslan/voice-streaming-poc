@@ -9,12 +9,9 @@ import SwiftUI
 
 struct ContentView: View {
     @ObservedObject var socketService = SocketService()
-    private var audioRecorder: AudioRecorder!
-    @State var message: String = ""
-    
     @State var isRecording = false
-    @State var isPlaying = false
-    
+    private var audioRecorder: AudioRecorder!
+
     init() {
         self.audioRecorder = AudioRecorder(socketService: socketService)
     }
@@ -59,27 +56,9 @@ struct ContentView: View {
                         Image(systemName: isRecording ? "square" : "mic")
                             .font(.system(size: 50))
                     }
-                })
-            
-//            Button(action: {
-//                if isPlaying {
-//                    audioRecorder.stopPlaying()
-//                    isPlaying = false
-//                } else {
-//                    audioRecorder.startPlaying()
-//                    isPlaying = true
-//                }
-//            }, label: {
-//                    ZStack {
-//                        Circle()
-//                            .strokeBorder(.black)
-//                            .fill(.clear)
-//                            .frame(width: UIScreen.main.bounds.width * 0.45)
-//                        
-//                        Image(systemName: isPlaying ? "square" : "play")
-//                            .font(.system(size: 50))
-//                    }
-//                })
+                }
+            )
+//            .disabled(!socketService.isConnected)
         }
         .padding()
     }

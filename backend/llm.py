@@ -1,5 +1,5 @@
 from langchain_core.prompts import (
-    HumanMessagePromptTemplate, ChatPromptTemplate, MessagesPlaceholder
+    HumanMessagePromptTemplate, ChatPromptTemplate, MessagesPlaceholder, SystemMessagePromptTemplate
 )
 from langchain_openai import ChatOpenAI
 from langchain_core.output_parsers import StrOutputParser, JsonOutputParser
@@ -12,27 +12,41 @@ from langchain.chains import LLMChain
 
 class TranscriptionHandler:
     def __init__(self):
-        self.model = ChatOpenAI(model="gpt-4", temperature=0)
+        self.model = ChatOpenAI(model="gpt-3.5-turbo", temperature=0, model_kwargs={
+            "response_format": { 
+            "type": "json_object" 
+            }
+        })
         self.json_parser = JsonOutputParser()
-        
+
     async def run(self, transcription: str) -> tuple[bool, str]:
         print("Received Format request: {}".format(transcription))
         ## TODO: Improve this further
         system_message = SystemMessage('''
-             You are a language formatter and AI component within a larger AI system designed to passively listen to the user's spoken 
-             thoughts. Your role is to refine the output of a speech transcription engine and decide whether the AI should 
-             respond to the user based on specific conditions.
+            You are a language formatter and AI component within a larger AI system designed to passively listen to the user's spoken 
+            thoughts. 
 
             Your objective is to take a series of unformatted words and sentences, organize them into coherent, grammatically correct 
             passages with appropriate punctuation, and determine if the AI should respond. If the sentence is incomplete, leave 
             it as incomplete and leave the corrected string in whatever state it may be in and then decide if the model_should_respond.
 
-            Example: "Well, I'm trying to figure out how to what you might call it, how to prompt my model properly.  Do do you think using multiple layers of elements Could  Do you think using multi  layers of LLMs  be useful?"
-            Formatted: "Well... I am trying to figure out how to... what you might call it... how to prompt my model properly. Do you think using multiple layers of LLMs be useful?
+            The model should respond to things that carry the intent of asking for validation like:
+            "Isn't it?"
+            "'some statement by the user' followed by right(.?)"
+                                       
+            The model should also respond to curtesy messages like:
+            "Good night, have a nice day, thanks, bye".
+                                       
+            Examples: [
+                                       
+                Input: "Well, I'm trying to figure out how to what you might call it, how to prompt my model properly.  Do do you think using multiple layers of elements Could  Do you think using multi  layers of LLMs  be useful?"
+                Output: '{"formatted_transcript": "Well... I am trying to figure out how to... what you might call it... how to prompt my model properly. Do you think using multiple layers of LLMs be useful?","model_should_respond": True}'
 
-            Please provide a JSON response with the following key-value pairs:
-            "formatted_transcript": <String>,
-            "model_should_respond": <True or False>
+                Input: "What is computer science?"
+                Output: '{"formatted_transcript": "What is computer science?", "model_should_respond": True}'
+            ]                  
+                                       
+            JSON Output: 
         ''')
         
         human_message_prompt = HumanMessagePromptTemplate.from_template("{transcript}")
@@ -96,8 +110,16 @@ class ChatModel:
             
 class ModelResponseHandler:
     def __init__(self):
-        self.model = ChatOpenAI(model="gpt-4", temperature=0)
+        self.model = ChatOpenAI(model="gpt-3.5-turbo", temperature=0)
         self.output_parser = JsonOutputParser()
+
+        '''
+, model_kwargs={
+            "response_format": { 
+            "type": "json_object" 
+            }
+        }
+        '''
     
     async def run(self, model_response: List[str]) -> tuple[bool, str]:
         # print("Received a ModelResponseHandler.Run request for the tokens: {}".format(model_response))
@@ -112,11 +134,11 @@ class ModelResponseHandler:
             Make sure to format the string to accomodate an output parser to be able to extract your response as a JSON object.
             Try not to end the result_text with the following structure "1." where the output parser might have trouble. 
             
+            If you have deemed should_return_response to be False then return only a JSON with "should_return_response": <True or False>
+
             If you have deemed should_return_response to be True then return a JSON object with key-value mappings using:
             "should_return_response": <True or False>
             "response_text": String
-            
-            If you have deemed should_return_response to be False then return only a JSON with "should_return_response": <True or False>
         ''')
         human_message_prompt = HumanMessagePromptTemplate.from_template("{model_response}")
 

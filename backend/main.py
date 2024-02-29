@@ -7,9 +7,6 @@ from reactivex import Subject
 from typing import List
 from starlette.websockets import WebSocketState
 import re
-
-import logging
-
 # Configure logging
 # logging.basicConfig(level=logging.DEBUG,  # Set the # logging level
 #                     format='%(asctime)s - %(levelname)s - %(message)s',  # Set the log message format
@@ -90,8 +87,6 @@ async def websocket_endpoint(websocket: WebSocket):
         if model_should_respond == False:
             return
         
-        print("End of thought detected for: {}".format(transcription))
-
         # if model_should_respond == True && 
         if generating_response == True and ongoing_invoke_chat_model_task is not None: 
             # logging.debug("Detected a need to update the transcription")   
@@ -104,11 +99,12 @@ async def websocket_endpoint(websocket: WebSocket):
         accumulated_tokens = []
         ongoing_invoke_chat_model_task = asyncio.create_task(invoke_chat_model(accumulated_tokens, transcription))
         try:
+            print("🙄 invoking chat model")
             # logging.debug("Waiting for ongoing_invoke_chat_model_task")
             await ongoing_invoke_chat_model_task
         except asyncio.CancelledError:
             print("Token processing task was canceled.")
-                        
+        
         # logging.debug("Cleaning up after handle_transcription")
         generating_response = False
         transcriptions.clear()
@@ -124,7 +120,7 @@ async def websocket_endpoint(websocket: WebSocket):
         while True:
             data = await websocket.receive_bytes()
             # logging.debug("Received new bytes from the client")
-            
+                
             if not dg_connection:
                 # logging.debug("Creating a connection to deepgram server")
                 dg_connection = await transcriber.connect_to_deepgram(transcriptions, transcription_observable)
@@ -159,7 +155,8 @@ async def websocket_endpoint(websocket: WebSocket):
             #         await transcriber.disconnect_deepgram(dg_connection)
             #         dg_connection = None
 if __name__ == "__main__":
-    ip_address = get_eth0_ip()
+    # ip_address = get_eth0_ip()
+    ip_address = "10.0.0.61"
     if ip_address:
         print(f"Server is running at ws://{ip_address}:8999/communicate")
     else:

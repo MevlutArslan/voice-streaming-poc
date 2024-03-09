@@ -8,56 +8,39 @@
 import SwiftUI
 
 struct ContentView: View {
-    @ObservedObject var socketService = SocketService()
-    @State var isRecording = false
-    private var audioRecorder: AudioRecorder!
 
-    init() {
-        self.audioRecorder = AudioRecorder(socketService: socketService)
-    }
-
+    @ObservedObject var viewController = MainViewController()
+    
     var body: some View {
         VStack {
-            Image(systemName: socketService.isConnected ? "network" : "network.slash")
+            Image(systemName: viewController.isConnected ? "network" : "network.slash")
                 .font(.system(size:50))
             
-            Button(action: {
-                socketService.connect()
-            }, label: {
-                Text("Connect to Server")
-            }).disabled(socketService.isConnected)
-            
-            Button(action: {
-                socketService.disconnect()
-            }, label: {
-                Text("Disconnect from the server")
-            }).disabled(!socketService.isConnected)
-            
-            /*
-                Record Audio
-             */
-            
-            // Record Audio
-            Button(action: {
-                if isRecording {
-                    audioRecorder.stopRecording()
-                    isRecording = false
-                } else {
-                    audioRecorder.startRecording()
-                    isRecording = true
+            ZStack {
+                VStack {
+                    Button(action: {
+                        viewController.connect()
+                    }, label: {
+                        Text("Connect to Server")
+                    })
+                    .disabled(viewController.isConnected)
+                    
+                    
+                    Button(action: {
+                        viewController.disconnect()
+                    }, label: {
+                        Text("Disconnect from the server")
+                    })
+                    .disabled(!viewController.isConnected)
+                    
                 }
-            }, label: {
-                    ZStack {
-                        Circle()
-                            .strokeBorder(.black)
-                            .fill(.clear)
-                            .frame(width: UIScreen.main.bounds.width * 0.45)
-                        
-                        Image(systemName: isRecording ? "square" : "mic")
-                            .font(.system(size: 50))
-                    }
+                
+                if viewController.isConnecting {
+                    ProgressView()
+                        .controlSize(.extraLarge)
                 }
-            )
+            }
+            
 //            .disabled(!socketService.isConnected)
         }
         .padding()

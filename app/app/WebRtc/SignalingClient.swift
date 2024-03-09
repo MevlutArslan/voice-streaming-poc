@@ -18,18 +18,18 @@ protocol SignalingClientDelegate: AnyObject {
 /// Manages connections to the SignalingServer
 class SignalingClient {
     
-    private var webSocketProvider: WebSocketProvider
+    private var socketService: SocketService
     private var is_connected = false
     var delegate: SignalingClientDelegate?
     
-    init(webSocketProvider: WebSocketProvider) {
-        self.webSocketProvider = webSocketProvider
+    init(socketService: SocketService) {
+        self.socketService = socketService
         self.connect()
     }
     
     func connect() {
-        self.webSocketProvider.delegate = self
-        self.webSocketProvider.connect()
+        self.socketService.delegate = self
+        self.socketService.connect()
     }
     
     func send(sdp: RTCSessionDescription) async {
@@ -39,29 +39,29 @@ class SignalingClient {
         // encode
         let data = try! JSONEncoder().encode(SessionDescription(from: sdp))
         // send
-        await self.webSocketProvider.send(data: data)
+        await self.socketService.send(data: data)
     }
     
     func send(iceCandidate: RTCIceCandidate) async {
         let data = try! JSONEncoder().encode(IceCandidate(from: iceCandidate))
         
-        await self.webSocketProvider.send(data: data)
+        await self.socketService.send(data: data)
     }
     
 }
 
-extension SignalingClient: WebSocketProviderDelegate {
-    func webSocketDidConnect(_ webSocket: WebSocketProvider) {
+extension SignalingClient: WebSocketDelegate {
+    func webSocketDidConnect(_ socketService: SocketService) {
         print("Connected to the Signaling Server.")
         is_connected = true
     }
     
-    func webSocketDidDisconnect(_ webSocket: WebSocketProvider) {
+    func webSocketDidDisconnect(_ socketService: SocketService) {
         print("Disconnected from the Signaling Server")
         is_connected = false
     }
     
-    func webSocket(_ webSocket: WebSocketProvider, didReceiveData data: Data) {
+    func webSocket(_ socketService: SocketService, didReceiveData data: Data) {
         print("Received Data from the Signaling Server")
         do {
             let sdp = try JSONDecoder().decode(SessionDescription.self, from: data)

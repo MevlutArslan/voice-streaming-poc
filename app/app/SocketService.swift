@@ -7,128 +7,88 @@
 
 import Foundation
 
-/*
-    * Connect to the socket
-    * Start Ping Pong
-    * Start Receiving Data
-    * Be Able to Send Data
-    * Disconnect from the socket
-*/
 
-class SocketService: NSObject, URLSessionWebSocketDelegate, ObservableObject {
-    private let url = URL(string: "ws://10.0.0.61:8999/communicate")!
+
+protocol WebSocketDelegate: AnyObject {
+    func webSocketDidConnect(_ socketService: SocketService)
+    func webSocketDidDisconnect(_ socketService: SocketService)
+    func webSocket(_ socketService: SocketService, didReceiveData data: Data)
+}
+
+class SocketService: NSObject {
+//    private let server_url: URL = URL(string: "ws://172.20.10.4:8999/offer")!; // mobile hotspot
+    private let server_url: URL = URL(string: "ws://10.0.0.61:8999/offer")!; // home wifi
 
     private var socket: URLSessionWebSocketTask?
     private var session: URLSession?
-    private var audioPlayer: AudioPlayer?
-    
-    @Published var isConnected = false
-    @Published var receivedMessages: [String] = []
+    var delegate: WebSocketDelegate?
+
+    private var isConnected = false
     
     override init() {
         super.init()
         
         session = URLSession(configuration: .ephemeral, delegate: self, delegateQueue: OperationQueue())
-        audioPlayer = AudioPlayer()
     }
     
     func connect() {
-        print("Attempting to connect to the socket at url: \(url)")
-        socket = session?.webSocketTask(with: url)
-        
+        socket = session?.webSocketTask(with: server_url)
         socket?.resume()
-        self.ping()
+        isConnected = true
+        
+        Task.init {
+            await receive()
+        }
     }
     
     func disconnect() {
-        print("📵 Closing socket...")
-        socket?.cancel(with: .normalClosure, reason: String("Closing socket").data(using: .utf8))
+        self.socket?.cancel()
+        self.socket = nil
+        isConnected = false
+
+        self.delegate?.webSocketDidDisconnect(self)
     }
     
-    func send(message: String) {
-        socket?.send(.string(message), completionHandler: { error in
-            if let error = error {
-                print("❌ Error encountered while sending message: \(String(describing: error))")
-            }
-        })
-    }
-    
-    /// Caller of this function should make sure the client is connected to the server.
     func send(data: Data) async {
         do {
-            try await socket?.send(.data(data))
-        }catch{
-            print("❌ Error encountered while sending message: \(String(describing: error))")
+            try await self.socket?.send(.data(data))
+        } catch {
+            print("Failed to send data: \(error)")
         }
     }
     
-    func receive() async throws {
-        if !self.isConnected {
-            return
-        }
-        
+    func receive() async {
         do {
-            var response: URLSessionWebSocketTask.Message? = try await socket?.receive()
-            switch(response) {
-            case .string(let string):
-                print("Received Message as String: \(string)")
-                self.receivedMessages.append(string)
-                break
+            let resp: URLSessionWebSocketTask.Message? = try await socket?.receive()
+            
+            switch (resp){
             case .data(let data):
-                print("Received Message as Data: \(data)")
-                self.audioPlayer?.playOpusAudio(opusData: data)
+                self.delegate?.webSocket(self, didReceiveData: data)
+                break
+            case .string(let string):
+                print("Received String Data: \(string)")
                 break
             default:
-                fatalError("Received an unexpected type of message!")
+                print("Received an unexpected type of message!")
             }
+        
         } catch {
-            print("Received Error: \(error)")
-            DispatchQueue.main.async(execute: {
-                self.isConnected = false
-            })
+            print("Received error while waiting for a message from the SignalingServer: \(error)")
         }
-   
-        try await self.receive()
-    }
-    
-    func ping() {
-        socket?.sendPing(pongReceiveHandler: { [weak self] error in
-            if let error = error {
-                print("❌ Received error while pinging server: \(error)")
-                DispatchQueue.main.async(execute: {
-                    self?.isConnected = false
-                })
-            }
-            
-            DispatchQueue.main.asyncAfter(deadline: .now() + .seconds(5)) {
-                self?.ping()
-            }
-        })
-    }
-    
-    func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {
-        if let error = error {
-            print("❌ URLSession task did complete with error: \(error)")
-            DispatchQueue.main.async(execute: {
-                self.isConnected = false
-            })
+        
+        if self.isConnected {
+            await self.receive()
         }
     }
-    
+}
+
+extension SocketService: URLSessionWebSocketDelegate, URLSessionDelegate {
     func urlSession(_ session: URLSession, webSocketTask: URLSessionWebSocketTask, didOpenWithProtocol protocol: String?) {
-        print("🤝 Completed Handshake Successfully.")
-        DispatchQueue.main.async(execute: {
-            self.isConnected = true
-        })
-        Task.init {
-            try await receive()
-        }
+        self.delegate?.webSocketDidConnect(self)
     }
     
     func urlSession(_ session: URLSession, webSocketTask: URLSessionWebSocketTask, didCloseWith closeCode: URLSessionWebSocketTask.CloseCode, reason: Data?) {
-        print("Closed connection to socket due to : \(closeCode)")
-        DispatchQueue.main.async(execute: {
-            self.isConnected = false
-        })
+        self.disconnect()
     }
 }
+

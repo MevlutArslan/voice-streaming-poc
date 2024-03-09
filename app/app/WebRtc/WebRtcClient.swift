@@ -67,21 +67,21 @@ class WebRtcClient: NSObject {
         
         super.init()
         
-        if let dataChannel = createDataChannel() {
-            dataChannel.delegate = self
-            self.localDataChannel = dataChannel
-        }
+//        if let dataChannel = createDataChannel() {
+//            dataChannel.delegate = self
+//            self.localDataChannel = dataChannel
+//        }
         self.peerConnection.delegate = self
     }
-    
-    private func createDataChannel() -> RTCDataChannel? {
-        let config = RTCDataChannelConfiguration()
-        guard let dataChannel = self.peerConnection.dataChannel(forLabel: "WebRTCData", configuration: config) else {
-            debugPrint("Warning: Couldn't create data channel.")
-            return nil
-        }
-        return dataChannel
-    }
+//    
+//    private func createDataChannel() -> RTCDataChannel? {
+//        let config = RTCDataChannelConfiguration()
+//        guard let dataChannel = self.peerConnection.dataChannel(forLabel: "WebRTCData", configuration: config) else {
+//            debugPrint("Warning: Couldn't create data channel.")
+//            return nil
+//        }
+//        return dataChannel
+//    }
     
     func offer(completion: @escaping (_ sdp: RTCSessionDescription) -> Void) {
         let constraints = RTCMediaConstraints(mandatoryConstraints: self.mediaConstraints,
@@ -101,6 +101,11 @@ class WebRtcClient: NSObject {
             })
         })
     }
+    
+    func close() {
+        self.peerConnection.close()
+    }
+    
     
     func set(remoteSdp: RTCSessionDescription, completion: @escaping (Error?) -> ()) {
         print("Setting remote description: \(remoteSdp.description)")

@@ -7,10 +7,9 @@ from webrtc_client import WebRtcClient
 from transcription_utils import handle_audio_stream
 
 app = FastAPI()
-web_rtc_client = WebRtcClient(handle_audio_stream_func= handle_audio_stream) 
+web_rtc_client = WebRtcClient(audio_stream_handler= handle_audio_stream) 
 
 web_rtc_connection_has_been_closed = asyncio.Event()
-
 
 @app.post("/connections/answer")
 async def answer_signaling_server(request: Request):

@@ -1,6 +1,7 @@
 from enum import Enum
 import aiortc
 import asyncio
+import sys
 
 class WebRtcConnectionState(Enum):
     NONE = 0
@@ -40,11 +41,12 @@ class WebRtcConnectionState(Enum):
                 return "closed"
             
 class WebRtcClient:
-    def __init__(self, handle_audio_stream_func) -> None:
+    def __init__(self, audio_stream_handler) -> None:
         self.peer_connection: aiortc.RTCPeerConnection = None
         self.connection_state: WebRtcConnectionState = WebRtcConnectionState.NONE
         self.receive_audio_task: asyncio.Task = None
-        self.handle_audio_stream = handle_audio_stream_func
+        self.audio_stream_handler = audio_stream_handler
+        self.closed_connection_event = asyncio.Event()
 
     
     async def connect_to_connection(self, remote_sdp: aiortc.RTCSessionDescription) -> aiortc.RTCSessionDescription:
@@ -94,16 +96,23 @@ class WebRtcClient:
         
         if self.connection_state is WebRtcConnectionState.CONNECTED:
             print("CONNECTED TO WebRTC CONNECTION")
+            if self.closed_connection_event.is_set():
+                self.closed_connection_event.clear()
         else:
             print("Detected {}".format(self.connection_state.to_str()))
+            self.closed_connection_event.set()
+            if self.receive_audio_task:
+                self.receive_audio_task.cancel(msg="Canceling receive audio task!")
+
+            sys.exit()
                 
 
     async def on_track(self, track: aiortc.MediaStreamTrack):
         if track.kind == "audio":
             print("Received audio track")
-            if self.receive_audio_task:
-                self.receive_audio_task.cancel()
-            self.receive_audio_task = asyncio.create_task(self.handle_audio_stream(track))
+            # if self.receive_audio_task.done() == False:
+            #     self.receive_audio_task.cancel()
+            self.receive_audio_task = asyncio.create_task(self.audio_stream_handler(track, self.closed_connection_event))
 
         @track.on("ended")
         async def on_ended():

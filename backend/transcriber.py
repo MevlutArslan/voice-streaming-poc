@@ -18,7 +18,7 @@ API_KEY = os.getenv("DG_API_KEY")
 
 deepgram = DeepgramClient(API_KEY)
 
-async def connect_to_deepgram(transcriptions: List[str], transcription_observable: Subject):
+async def connect_to_deepgram(transcription_observable: Subject):
     options = LiveOptions(
         model="nova-2-conversationalai",
         language="en-US",
@@ -27,7 +27,8 @@ async def connect_to_deepgram(transcriptions: List[str], transcription_observabl
         numerals=True,
         encoding="linear16",
         sample_rate=48000,
-        endpointing=1500,
+        channels=2,
+        endpointing=1500
         # interim_results=True,
         # utterance_end_ms=2000 # if silence of 2000ms/2 seconds is detected then feed into llm
     )
@@ -40,12 +41,8 @@ async def connect_to_deepgram(transcriptions: List[str], transcription_observabl
         if len(sentence) == 0:
             return
         if result.is_final:
-            transcriptions.append(sentence)
-            if len(transcriptions) > 1:
-                concatenated_transcription = " ".join(transcriptions)
-            else:
-                concatenated_transcription = "".join(transcriptions)
-            transcription_observable.on_next(concatenated_transcription)
+            print(sentence)
+            transcription_observable.on_next(sentence)
     
     async def on_metadata(self, metadata, **kwargs):
         print(f"{metadata}")
@@ -61,7 +58,7 @@ async def connect_to_deepgram(transcriptions: List[str], transcription_observabl
 
     return dg_connection
 
-async def disconnect_deepgram(dg_connection):
+async def disconnect_deepgram(dg_connection: AsyncLiveClient):
     if dg_connection:
         print("Disconnecting from deepgram")
         await dg_connection.finish()
